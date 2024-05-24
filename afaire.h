@@ -62,10 +62,6 @@ void init_style(void) {
     colors[ImGuiCol_TableRowBgAlt] = (ImVec4){1.00f, 1.00f, 1.00f, 0.06f};
     colors[ImGuiCol_TextSelectedBg] = (ImVec4){0.20f, 0.22f, 0.23f, 1.00f};
     colors[ImGuiCol_DragDropTarget] = (ImVec4){0.33f, 0.67f, 0.86f, 1.00f};
-    colors[ImGuiCol_NavHighlight] = (ImVec4){1.00f, 0.00f, 0.00f, 1.00f};
-    colors[ImGuiCol_NavWindowingHighlight] = (ImVec4){1.00f, 0.00f, 0.00f, 0.70f};
-    colors[ImGuiCol_NavWindowingDimBg] = (ImVec4){1.00f, 0.00f, 0.00f, 0.20f};
-    colors[ImGuiCol_ModalWindowDimBg] = (ImVec4){1.00f, 0.00f, 0.00f, 0.35f};
 
     ImGuiStyle *style = igGetStyle();
     style->WindowPadding = (ImVec2){8.00f, 8.00f};
