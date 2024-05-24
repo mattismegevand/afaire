@@ -12,7 +12,7 @@
 #include "sokol_imgui.h"
 
 void init_style(void) {
-    ImVec4* colors = igGetStyle()->Colors;
+    ImVec4 *colors = igGetStyle()->Colors;
     colors[ImGuiCol_Text] = (ImVec4){1.00f, 1.00f, 1.00f, 1.00f};
     colors[ImGuiCol_TextDisabled] = (ImVec4){0.50f, 0.50f, 0.50f, 1.00f};
     colors[ImGuiCol_WindowBg] = (ImVec4){0.10f, 0.10f, 0.10f, 1.00f};
