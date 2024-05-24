@@ -1,5 +1,8 @@
 #include "afaire.h"
 
+#define min(a, b) (((a) < (b)) ? (a) : (b))
+#define max(a, b) (((a) > (b)) ? (a) : (b))
+
 #define DEFAULT_FILE_PANE_SIZE 150
 #define MAX_FILES 100
 #define MAX_FILENAME_LENGTH 256
@@ -20,6 +23,7 @@ typedef struct {
 typedef struct {
     bool display;
     bool new_file_popup;
+    bool fuzzy_finder_popup;
     int selected;
     char files[MAX_FILES][MAX_FILENAME_LENGTH];
     char selected_filename[MAX_FILENAME_LENGTH];
@@ -49,7 +53,7 @@ static void init(void) {
     state.markdown_renderer = (markdown_renderer_t){
         .display = true};
     state.file_pane = (file_pane_t){
-        .selected = -1, .display = true, .new_file_popup = false, .files = {{0}}, .selected_filename = {0}};
+        .selected = -1, .display = true, .new_file_popup = false, .fuzzy_finder_popup = false, .files = {{0}}, .selected_filename = {0}};
     state.editor = (editor_t){
         .dirty = -1, .buf = {0}, .filename = {0}};
 
@@ -150,11 +154,13 @@ static void frame(void) {
 
     if (igIsKeyChordPressed_Nil(ImGuiMod_Ctrl | ImGuiKey_N))
         state.file_pane.new_file_popup = true;
+    if (igIsKeyChordPressed_Nil(ImGuiMod_Ctrl | ImGuiKey_P))
+        state.file_pane.fuzzy_finder_popup = true;
     if (igIsKeyChordPressed_Nil(ImGuiMod_Ctrl | ImGuiKey_S))
         save_file(folder);
     if (igIsKeyChordPressed_Nil(ImGuiMod_Ctrl | ImGuiKey_Q))
         sapp_request_quit();
-    if (igIsKeyChordPressed_Nil(ImGuiMod_Ctrl | ImGuiKey_P))
+    if (igIsKeyChordPressed_Nil(ImGuiMod_Ctrl | ImGuiKey_B))
         state.file_pane.display = !state.file_pane.display;
     if (igIsKeyChordPressed_Nil(ImGuiMod_Ctrl | ImGuiKey_V))
         state.markdown_renderer.display = !state.markdown_renderer.display;
@@ -172,6 +178,8 @@ static void frame(void) {
     if (igBeginMenu("File", true)) {
         if (igMenuItem_Bool("New", "Ctrl+N", false, true))
             state.file_pane.new_file_popup = true;
+        if (igMenuItem_Bool("Open", "Ctrl+P", false, true))
+            state.file_pane.fuzzy_finder_popup = true;
         if (igMenuItem_Bool("Save", "Ctrl+S", false, true))
             save_file(folder);
         if (igMenuItem_Bool("Quit", "Ctrl+Q", false, true))
@@ -179,7 +187,7 @@ static void frame(void) {
         igEndMenu();
     }
     if (igBeginMenu("View", true)) {
-        if (igMenuItem_Bool("Files", "Ctrl+P", state.file_pane.display, true))
+        if (igMenuItem_Bool("File Pane", "Ctrl+B", state.file_pane.display, true))
             state.file_pane.display = !state.file_pane.display;
         if (igMenuItem_Bool("Markdown Preview", "Ctrl+V", state.markdown_renderer.display, true))
             state.markdown_renderer.display = !state.markdown_renderer.display;
@@ -250,6 +258,59 @@ static void frame(void) {
         igOpenPopup_Str("new_file", 0);
         state.file_pane.new_file_popup = false;
     }
+    static bool focus = true;
+    static int selected = -1;
+    if (state.file_pane.fuzzy_finder_popup) {
+        igBegin("## fuzzy_finder", 0, 0);
+        static ImGuiTextFilter filter;
+        int i, j;
+
+        if (igBeginListBox("## search_results", (ImVec2){0, 0})) {
+            for (i = 0, j = 0; i < MAX_FILES && state.file_pane.files[i][0] != '\0'; i++) {
+                if (ImGuiTextFilter_PassFilter(&filter, state.file_pane.files[i], NULL)) {
+                    if (igSelectable_Bool(state.file_pane.files[i], selected == j, 0, (ImVec2){0, 0})) {
+                        state.file_pane.selected = i;
+                        read_file(folder);
+                        state.file_pane.fuzzy_finder_popup = false;
+                    }
+                    j++;
+                }
+            }
+            igEndListBox();
+        }
+        if (igIsKeyPressed_Bool(ImGuiKey_UpArrow, 0)) {
+            selected = max(0, selected - 1);
+        }
+        if (igIsKeyPressed_Bool(ImGuiKey_DownArrow, 0)) {
+            selected = min(j - 1, selected + 1);
+        }
+        if (igIsKeyPressed_Bool(ImGuiKey_Enter, 0) && selected >= 0 && selected < j) {
+            for (i = 0, j = 0; i < MAX_FILES && state.file_pane.files[i][0] != '\0'; i++) {
+                if (ImGuiTextFilter_PassFilter(&filter, state.file_pane.files[i], NULL)) {
+                    if (j == selected) {
+                        state.file_pane.selected = i;
+                        break;
+                    }
+                    j++;
+                }
+            }
+            read_file(folder);
+            state.file_pane.fuzzy_finder_popup = false;
+        }
+        if (igIsKeyPressed_Bool(ImGuiKey_Escape, 0)) {
+            state.file_pane.fuzzy_finder_popup = false;
+        }
+
+        ImGuiTextFilter_Draw(&filter, "##search", 256);
+        if (focus) {
+            igSetKeyboardFocusHere(-1);
+            focus = false;
+        }
+        igEnd();
+    } else {
+        focus = true;
+        selected = -1;
+    }
 
     igEnd();
 
@@ -273,7 +334,7 @@ sapp_desc sokol_main(int argc, char *argv[]) {
     (void)argv;
     if (argc == 2)
         strncpy(folder, argv[1], sizeof(folder));
-    
+
     return (sapp_desc){
         .init_cb = init,
         .frame_cb = frame,

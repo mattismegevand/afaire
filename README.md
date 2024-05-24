@@ -26,7 +26,6 @@ cmake --build .
 ### todo
 
 - Handle errors
-- Fuzzy finder
 - Open multiple files at the same time (tabs)
 - Markdown live preview
 - Calendar view à la org-mode
