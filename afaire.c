@@ -8,7 +8,7 @@
 #define MAX_FILENAME_LENGTH 256
 #define BUFFER_SIZE 1024
 
-char folder[256] = {0};
+char folder[256] = {'\0'};
 
 typedef struct {
     bool display;
@@ -30,6 +30,7 @@ typedef struct {
 } file_pane_t;
 
 static struct {
+    char error_message[256];
     sg_pass_action pass_action;
     markdown_renderer_t markdown_renderer;
     editor_t editor;
@@ -48,6 +49,7 @@ static void init(void) {
     ImFontAtlas_AddFontFromFileTTF(fonts, "../ibm.ttf", 18.0f, NULL, NULL);
     init_style();
 
+    state.error_message[0] = '\0';
     state.pass_action =
         (sg_pass_action){.colors[0] = {.load_action = SG_LOADACTION_CLEAR, .clear_value = {0.0f, 0.5f, 1.0f, 1.0}}};
     state.markdown_renderer = (markdown_renderer_t){.display = true};
@@ -84,6 +86,8 @@ static void read_file(const char *path) {
         fread(state.editor.buf, 1, BUFFER_SIZE, file);
         fclose(file);
         set_dirty(0, filename, true);
+    } else {
+        snprintf(state.error_message, sizeof(state.error_message), "Could not open file %s", filename);
     }
 }
 
@@ -94,6 +98,8 @@ static void new_file(const char *path, const char *filename) {
     if (file) {
         fclose(file);
         set_dirty(0, filename, true);
+    } else {
+        snprintf(state.error_message, sizeof(state.error_message), "Could not create file %s", filename);
     }
 }
 
@@ -110,6 +116,8 @@ static void save_file(const char *path) {
         fwrite(state.editor.buf, 1, strlen(state.editor.buf), file);
         fclose(file);
         set_dirty(0, filename, true);
+    } else {
+        snprintf(state.error_message, sizeof(state.error_message), "Could not save file %s", filename);
     }
 }
 
@@ -128,7 +136,7 @@ static void read_dir(const char *path) {
     for (i = 0; state.file_pane.files[i][0] != '\0'; i++) {
         state.file_pane.files[i][0] = '\0';
     }
-    d = opendir(folder);
+    d = opendir(path);
     if (d) {
         i = 0;
         while ((dir = readdir(d)) != NULL) {
@@ -137,10 +145,13 @@ static void read_dir(const char *path) {
             }
         }
         closedir(d);
+    } else {
+        snprintf(state.error_message, sizeof(state.error_message), "Could not open directory %s", path);
     }
 }
 
 static int editor_callback(ImGuiInputTextCallbackData *data) {
+    (void) data;
     set_dirty(1, state.file_pane.files[state.file_pane.selected], false);
     return 0;
 }
@@ -266,7 +277,7 @@ static void frame(void) {
     if (igBeginPopupModal("new_file", NULL, 0)) {
         igText("New filename:");
         igSameLine(0, 0);
-        char new_filename[256] = {0};
+        char new_filename[256] = {'\0'};
         bool enter = igInputText("##new_filename", new_filename, sizeof(new_filename),
                                  ImGuiInputTextFlags_EnterReturnsTrue, NULL, NULL);
         if (enter || igButton("Create", (ImVec2){0, 0})) {
@@ -338,6 +349,17 @@ static void frame(void) {
     } else {
         focus = true;
         selected = -1;
+    }
+    if (igBeginPopupModal("## error", NULL, 0)) {
+        igText("Error: %s", state.error_message);
+        if (igIsKeyPressed_Bool(ImGuiKey_Escape, 0) || igButton("Close", (ImVec2){0, 0})) {
+            igCloseCurrentPopup();
+            state.error_message[0] = '\0';
+        }
+        igEndPopup();
+    }
+    if (state.error_message[0] != '\0') {
+        igOpenPopup_Str("## error", 0);
     }
 
     igEnd();
