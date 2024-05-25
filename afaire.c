@@ -1,5 +1,18 @@
 #include "afaire.h"
 
+typedef uint8_t u8;
+typedef uint16_t u16;
+typedef int32_t b32;
+typedef int32_t i32;
+typedef uint32_t u32;
+typedef uint64_t u64;
+typedef float f32;
+typedef double f64;
+typedef uintptr_t uptr;
+typedef char byte;
+typedef ptrdiff_t size;
+typedef size_t usize;
+
 #define min(a, b) (((a) < (b)) ? (a) : (b))
 #define max(a, b) (((a) > (b)) ? (a) : (b))
 
@@ -15,7 +28,7 @@ typedef struct {
 } markdown_renderer_t;
 
 typedef struct {
-    int dirty;
+    bool dirty;
     char buf[BUFFER_SIZE];
     char filename[MAX_FILENAME_LENGTH];
 } editor_t;
@@ -24,7 +37,7 @@ typedef struct {
     bool display;
     bool new_file_popup;
     bool fuzzy_finder_popup;
-    int selected;
+    u16 selected;
     char files[MAX_FILES][MAX_FILENAME_LENGTH];
     char selected_filename[MAX_FILENAME_LENGTH];
 } file_pane_t;
@@ -57,9 +70,9 @@ static void init(void) {
                                     .display = true,
                                     .new_file_popup = false,
                                     .fuzzy_finder_popup = false,
-                                    .files = {{0}},
+                                    .files = {0},
                                     .selected_filename = {0}};
-    state.editor = (editor_t){.dirty = -1, .buf = {0}, .filename = {0}};
+    state.editor = (editor_t){.dirty = false, .buf = {0}, .filename = {0}};
 
     if (folder[0] == '\0') {
         printf("Usage: afaire <folder>\n");
@@ -67,7 +80,7 @@ static void init(void) {
     }
 }
 
-static void set_dirty(int dirty, const char *filename, bool force) {
+static void set_dirty(bool dirty, const char *filename, bool force) {
     if (force || state.editor.dirty != dirty) {
         state.editor.dirty = dirty;
         snprintf(state.file_pane.selected_filename, sizeof(state.file_pane.selected_filename), "%s%s",
@@ -104,7 +117,7 @@ static void new_file(const char *path, const char *filename) {
 }
 
 static void save_file(const char *path) {
-    if (state.editor.dirty < 0) {
+    if (!state.editor.dirty) {
         return;
     }
     char fullpath[BUFFER_SIZE];
@@ -130,7 +143,7 @@ static void delete_file(const char *path, int i) {
 }
 
 static void read_dir(const char *path) {
-    int i;
+    u16 i;
     DIR *d;
     struct dirent *dir;
     for (i = 0; state.file_pane.files[i][0] != '\0'; i++) {
@@ -151,7 +164,7 @@ static void read_dir(const char *path) {
 }
 
 static int editor_callback(ImGuiInputTextCallbackData *data) {
-    (void) data;
+    (void)data;
     set_dirty(1, state.file_pane.files[state.file_pane.selected], false);
     return 0;
 }
@@ -231,7 +244,7 @@ static void frame(void) {
         if (state.file_pane.files[0][0] == '\0') {
             read_dir(folder);
         }
-        for (int i = 0; state.file_pane.files[i][0] != '\0'; i++) {
+        for (u16 i = 0; state.file_pane.files[i][0] != '\0'; i++) {
             bool is_current_file = strcmp(state.file_pane.files[i], state.file_pane.selected_filename + 2) == 0;
             if (igSelectable_Bool((is_current_file) ? state.file_pane.selected_filename : state.file_pane.files[i],
                                   is_current_file, 0, (ImVec2){0, 0})) {
@@ -298,11 +311,11 @@ static void frame(void) {
         state.file_pane.new_file_popup = false;
     }
     static bool focus = true;
-    static int selected = -1;
+    static u16 selected = -1;
     if (state.file_pane.fuzzy_finder_popup) {
         igBegin("## fuzzy_finder", 0, 0);
         static ImGuiTextFilter filter;
-        int i, j;
+        u16 i, j;
 
         if (igBeginListBox("## search_results", (ImVec2){0, 0})) {
             for (i = 0, j = 0; i < MAX_FILES && state.file_pane.files[i][0] != '\0'; i++) {

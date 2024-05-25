@@ -4,6 +4,8 @@
 #include "sokol_log.h"
 #define CIMGUI_DEFINE_ENUMS_AND_STRUCTS
 #include <dirent.h>
+#include <stddef.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
