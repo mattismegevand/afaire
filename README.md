@@ -25,7 +25,6 @@ cmake --build .
 
 ### todo
 
-- Open multiple files at the same time (tabs)
 - Markdown live preview
 - Calendar view à la org-mode
 - Make it works on all platform (Desktop/Mobile/Web)

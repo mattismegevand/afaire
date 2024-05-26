@@ -17,38 +17,43 @@ typedef size_t usize;
 #define max(a, b) (((a) > (b)) ? (a) : (b))
 
 #define DEFAULT_FILE_PANE_SIZE 150
-#define MAX_FILES 100
-#define MAX_FILENAME_LENGTH 256
+#define MAX_FILES 64
+#define MAX_EDITORS 16
+#define MAX_STRING_LENGTH 256
 #define BUFFER_SIZE 1024
 
-char folder[256] = {'\0'};
+char folder[MAX_STRING_LENGTH] = {'\0'};
 
 typedef struct {
     bool display;
 } markdown_renderer_t;
 
 typedef struct {
+    bool active;
     bool dirty;
+    u8 editor_index;
+    u8 file_index;
     char buf[BUFFER_SIZE];
-    char filename[MAX_FILENAME_LENGTH];
+    char filename[MAX_STRING_LENGTH];
+    char selected_filename[MAX_STRING_LENGTH];
 } editor_t;
 
 typedef struct {
     bool display;
     bool new_file_popup;
     bool fuzzy_finder_popup;
-    u16 selected;
-    char files[MAX_FILES][MAX_FILENAME_LENGTH];
-    char selected_filename[MAX_FILENAME_LENGTH];
+    char files[MAX_FILES][MAX_STRING_LENGTH];
 } file_pane_t;
 
 static struct {
-    char error_message[256];
+    char error_message[MAX_STRING_LENGTH];
     sg_pass_action pass_action;
     markdown_renderer_t markdown_renderer;
-    editor_t editor;
+    editor_t editor[MAX_EDITORS];
     file_pane_t file_pane;
 } state;
+
+editor_t *current_editor;
 
 static void init(void) {
     sg_setup(&(sg_desc){
@@ -66,13 +71,19 @@ static void init(void) {
     state.pass_action =
         (sg_pass_action){.colors[0] = {.load_action = SG_LOADACTION_CLEAR, .clear_value = {0.0f, 0.5f, 1.0f, 1.0}}};
     state.markdown_renderer = (markdown_renderer_t){.display = true};
-    state.file_pane = (file_pane_t){.selected = -1,
-                                    .display = true,
-                                    .new_file_popup = false,
-                                    .fuzzy_finder_popup = false,
-                                    .files = {0},
-                                    .selected_filename = {0}};
-    state.editor = (editor_t){.dirty = false, .buf = {0}, .filename = {0}};
+    state.file_pane =
+        (file_pane_t){.display = true, .new_file_popup = false, .fuzzy_finder_popup = false, .files = {0}};
+    for (u8 i = 0; i < MAX_EDITORS; i++) {
+        state.editor[i] = (editor_t){.active = false,
+                                     .dirty = false,
+                                     .editor_index = i,
+                                     .file_index = -1,
+                                     .buf = {0},
+                                     .filename = {0},
+                                     .selected_filename = {0}};
+    }
+    current_editor = &state.editor[0];
+    current_editor->active = true;
 
     if (folder[0] == '\0') {
         printf("Usage: afaire <folder>\n");
@@ -81,26 +92,26 @@ static void init(void) {
 }
 
 static void set_dirty(bool dirty, const char *filename, bool force) {
-    if (force || state.editor.dirty != dirty) {
-        state.editor.dirty = dirty;
-        snprintf(state.file_pane.selected_filename, sizeof(state.file_pane.selected_filename), "%s%s",
+    if (force || current_editor->dirty != dirty) {
+        current_editor->dirty = dirty;
+        snprintf(current_editor->selected_filename, sizeof(current_editor->selected_filename), "%s%s",
                  dirty ? "* " : "  ", filename);
     }
 }
 
 static void read_file(const char *path) {
+    FILE *file;
     char fullpath[BUFFER_SIZE];
-    char *filename;
-    filename = state.file_pane.files[state.file_pane.selected];
-    snprintf(fullpath, sizeof(fullpath), "%s/%s", path, filename);
-    FILE *file = fopen(fullpath, "r");
+    strncpy(current_editor->filename, state.file_pane.files[current_editor->file_index], MAX_STRING_LENGTH);
+    snprintf(fullpath, sizeof(fullpath), "%s/%s", path, current_editor->filename);
+    file = fopen(fullpath, "r");
     if (file) {
-        memset(state.editor.buf, 0, BUFFER_SIZE);
-        fread(state.editor.buf, 1, BUFFER_SIZE, file);
+        memset(current_editor->buf, 0, BUFFER_SIZE);
+        fread(current_editor->buf, 1, BUFFER_SIZE, file);
         fclose(file);
-        set_dirty(0, filename, true);
+        set_dirty(0, current_editor->filename, true);
     } else {
-        snprintf(state.error_message, sizeof(state.error_message), "Could not open file %s", filename);
+        snprintf(state.error_message, sizeof(state.error_message), "Could not open file %s", current_editor->filename);
     }
 }
 
@@ -117,16 +128,16 @@ static void new_file(const char *path, const char *filename) {
 }
 
 static void save_file(const char *path) {
-    if (!state.editor.dirty) {
+    if (!current_editor->dirty) {
         return;
     }
     char fullpath[BUFFER_SIZE];
     char *filename;
-    filename = state.file_pane.files[state.file_pane.selected];
+    filename = current_editor->filename;
     snprintf(fullpath, sizeof(fullpath), "%s/%s", path, filename);
     FILE *file = fopen(fullpath, "w");
     if (file) {
-        fwrite(state.editor.buf, 1, strlen(state.editor.buf), file);
+        fwrite(&current_editor->buf, 1, strlen(current_editor->buf), file);
         fclose(file);
         set_dirty(0, filename, true);
     } else {
@@ -154,7 +165,7 @@ static void read_dir(const char *path) {
         i = 0;
         while ((dir = readdir(d)) != NULL) {
             if (dir->d_type == DT_REG) {
-                strncpy(state.file_pane.files[i++], dir->d_name, MAX_FILENAME_LENGTH);
+                strncpy(state.file_pane.files[i++], dir->d_name, MAX_STRING_LENGTH);
             }
         }
         closedir(d);
@@ -163,9 +174,32 @@ static void read_dir(const char *path) {
     }
 }
 
+void open_file_handler(const char *filename) {
+    u8 first_free = -1;
+    for (u8 i = 0; i < MAX_EDITORS; i++) {
+        if (first_free == (u8)-1 && !state.editor[i].active) {
+            first_free = i;
+        }
+        if (strcmp(state.editor[i].filename, filename) == 0) {
+            current_editor = &state.editor[i];
+            current_editor->active = true;
+            current_editor->file_index = i;
+            read_file(folder);
+            return;
+        }
+    }
+    if (first_free != (u8)-1) {
+        current_editor = &state.editor[first_free];
+        current_editor->active = true;
+        current_editor->file_index = first_free;
+        strncpy(current_editor->filename, filename, MAX_STRING_LENGTH);
+        read_file(folder);
+    }
+}
+
 static int editor_callback(ImGuiInputTextCallbackData *data) {
     (void)data;
-    set_dirty(1, state.file_pane.files[state.file_pane.selected], false);
+    set_dirty(1, current_editor->filename, false);
     return 0;
 }
 
@@ -245,11 +279,10 @@ static void frame(void) {
             read_dir(folder);
         }
         for (u16 i = 0; state.file_pane.files[i][0] != '\0'; i++) {
-            bool is_current_file = strcmp(state.file_pane.files[i], state.file_pane.selected_filename + 2) == 0;
-            if (igSelectable_Bool((is_current_file) ? state.file_pane.selected_filename : state.file_pane.files[i],
+            bool is_current_file = strcmp(state.file_pane.files[i], current_editor->filename) == 0;
+            if (igSelectable_Bool((is_current_file) ? current_editor->selected_filename : state.file_pane.files[i],
                                   is_current_file, 0, (ImVec2){0, 0})) {
-                state.file_pane.selected = i;
-                read_file(folder);
+                open_file_handler(state.file_pane.files[i]);
             }
             if (igBeginPopupContextItem(NULL, ImGuiPopupFlags_MouseButtonRight)) {
                 if (igSmallButton("Rename")) {
@@ -257,9 +290,9 @@ static void frame(void) {
                     igCloseCurrentPopup();
                 }
                 if (igSmallButton("Delete")) {
-                    if (state.file_pane.selected == i) {
-                        state.editor.buf[0] = '\0';
-                        state.file_pane.selected = -1;
+                    if (current_editor->file_index == i) {
+                        current_editor->buf[0] = '\0';
+                        current_editor->file_index = -1;
                     }
                     delete_file(folder, i);
                     read_dir(folder);
@@ -273,11 +306,22 @@ static void frame(void) {
     }
     ImVec2 avail;
     igGetContentRegionAvail(&avail);
-    if (state.markdown_renderer.display) {
-        avail.x /= 2;
+    igBeginGroup();
+    if (igBeginTabBar("## tabs", ImGuiTabBarFlags_None)) {
+        for (u8 i = 0; i < MAX_EDITORS; i++) {
+            if (igBeginTabItem(state.editor[i].filename, &state.editor[i].active, 0)) {
+                if (igIsItemClicked(0)) {
+                    current_editor = &state.editor[i];
+                }
+                igInputTextMultiline(
+                    "## editor", current_editor->buf, sizeof(current_editor->buf), (ImVec2){avail.x, -1},
+                    ImGuiInputTextFlags_AllowTabInput | ImGuiInputTextFlags_CallbackEdit, &editor_callback, 0);
+                igEndTabItem();
+            }
+        }
+        igEndTabBar();
+        igEndGroup();
     }
-    igInputTextMultiline("## editor", state.editor.buf, sizeof(state.editor.buf), (ImVec2){avail.x, -1},
-                         ImGuiInputTextFlags_AllowTabInput | ImGuiInputTextFlags_CallbackEdit, &editor_callback, 0);
     if (state.markdown_renderer.display) {
         igSameLine(0, 0);
         igBeginChild_Str(
@@ -290,7 +334,7 @@ static void frame(void) {
     if (igBeginPopupModal("new_file", NULL, 0)) {
         igText("New filename:");
         igSameLine(0, 0);
-        char new_filename[256] = {'\0'};
+        char new_filename[MAX_STRING_LENGTH] = {'\0'};
         bool enter = igInputText("##new_filename", new_filename, sizeof(new_filename),
                                  ImGuiInputTextFlags_EnterReturnsTrue, NULL, NULL);
         if (enter || igButton("Create", (ImVec2){0, 0})) {
@@ -321,8 +365,7 @@ static void frame(void) {
             for (i = 0, j = 0; i < MAX_FILES && state.file_pane.files[i][0] != '\0'; i++) {
                 if (ImGuiTextFilter_PassFilter(&filter, state.file_pane.files[i], NULL)) {
                     if (igSelectable_Bool(state.file_pane.files[i], selected == j, 0, (ImVec2){0, 0})) {
-                        state.file_pane.selected = i;
-                        read_file(folder);
+                        open_file_handler(state.file_pane.files[i]);
                         state.file_pane.fuzzy_finder_popup = false;
                     }
                     j++;
@@ -340,20 +383,20 @@ static void frame(void) {
             for (i = 0, j = 0; i < MAX_FILES && state.file_pane.files[i][0] != '\0'; i++) {
                 if (ImGuiTextFilter_PassFilter(&filter, state.file_pane.files[i], NULL)) {
                     if (j == selected) {
-                        state.file_pane.selected = i;
+                        current_editor->file_index = i;
                         break;
                     }
                     j++;
                 }
             }
-            read_file(folder);
+            open_file_handler(state.file_pane.files[i]);
             state.file_pane.fuzzy_finder_popup = false;
         }
         if (igIsKeyPressed_Bool(ImGuiKey_Escape, 0)) {
             state.file_pane.fuzzy_finder_popup = false;
         }
 
-        ImGuiTextFilter_Draw(&filter, "##search", 256);
+        ImGuiTextFilter_Draw(&filter, "##search", MAX_STRING_LENGTH);
         if (focus) {
             igSetKeyboardFocusHere(-1);
             focus = false;
