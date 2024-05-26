@@ -83,6 +83,7 @@ static void init(void) {
                                      .selected_filename = {0}};
     }
     current_editor = &state.editor[0];
+    strncpy(current_editor->filename, "*scratch*", MAX_STRING_LENGTH);
     current_editor->active = true;
 
     if (folder[0] == '\0') {
@@ -127,24 +128,6 @@ static void new_file(const char *path, const char *filename) {
     }
 }
 
-static void save_file(const char *path) {
-    if (!current_editor->dirty) {
-        return;
-    }
-    char fullpath[BUFFER_SIZE];
-    char *filename;
-    filename = current_editor->filename;
-    snprintf(fullpath, sizeof(fullpath), "%s/%s", path, filename);
-    FILE *file = fopen(fullpath, "w");
-    if (file) {
-        fwrite(&current_editor->buf, 1, strlen(current_editor->buf), file);
-        fclose(file);
-        set_dirty(0, filename, true);
-    } else {
-        snprintf(state.error_message, sizeof(state.error_message), "Could not save file %s", filename);
-    }
-}
-
 static void delete_file(const char *path, int i) {
     char fullpath[BUFFER_SIZE];
     char *filename;
@@ -171,6 +154,25 @@ static void read_dir(const char *path) {
         closedir(d);
     } else {
         snprintf(state.error_message, sizeof(state.error_message), "Could not open directory %s", path);
+    }
+}
+
+static void save_file(const char *path) {
+    if (!current_editor->dirty) {
+        return;
+    }
+    char fullpath[BUFFER_SIZE];
+    char *filename;
+    filename = current_editor->filename;
+    snprintf(fullpath, sizeof(fullpath), "%s/%s", path, filename);
+    FILE *file = fopen(fullpath, "w");
+    if (file) {
+        fwrite(&current_editor->buf, 1, strlen(current_editor->buf), file);
+        fclose(file);
+        set_dirty(0, filename, true);
+        read_dir(path);
+    } else {
+        snprintf(state.error_message, sizeof(state.error_message), "Could not save file %s", filename);
     }
 }
 
