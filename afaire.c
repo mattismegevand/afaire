@@ -177,7 +177,17 @@ static void save_file(const char *path) {
 }
 
 void open_file_handler(const char *filename) {
-    u8 first_free = -1;
+    u8 first_free, file_index;
+    first_free = file_index = (u8)-1;
+    for (u8 i = 0; i < MAX_FILES; i++) {
+        if (state.file_pane.files[i][0] == '\0') {
+            break;
+        }
+        if (strcmp(state.file_pane.files[i], filename) == 0) {
+            file_index = i;
+            break;
+        }
+    }
     for (u8 i = 0; i < MAX_EDITORS; i++) {
         if (first_free == (u8)-1 && !state.editor[i].active) {
             first_free = i;
@@ -185,7 +195,7 @@ void open_file_handler(const char *filename) {
         if (strcmp(state.editor[i].filename, filename) == 0) {
             current_editor = &state.editor[i];
             current_editor->active = true;
-            current_editor->file_index = i;
+            current_editor->file_index = file_index;
             read_file(folder);
             return;
         }
@@ -193,7 +203,7 @@ void open_file_handler(const char *filename) {
     if (first_free != (u8)-1) {
         current_editor = &state.editor[first_free];
         current_editor->active = true;
-        current_editor->file_index = first_free;
+        current_editor->file_index = file_index;
         strncpy(current_editor->filename, filename, MAX_STRING_LENGTH);
         read_file(folder);
     }
@@ -294,7 +304,7 @@ static void frame(void) {
                 if (igSmallButton("Delete")) {
                     if (current_editor->file_index == i) {
                         current_editor->buf[0] = '\0';
-                        current_editor->file_index = -1;
+                        current_editor->file_index = (u8)-1;
                     }
                     delete_file(folder, i);
                     read_dir(folder);
@@ -357,7 +367,7 @@ static void frame(void) {
         state.file_pane.new_file_popup = false;
     }
     static bool focus = true;
-    static u16 selected = -1;
+    static u16 selected = (u16)-1;
     if (state.file_pane.fuzzy_finder_popup) {
         igBegin("## fuzzy_finder", 0, 0);
         static ImGuiTextFilter filter;
