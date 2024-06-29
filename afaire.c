@@ -189,7 +189,7 @@ void open_file_handler(const char *filename) {
         }
     }
     for (u8 i = 0; i < MAX_EDITORS; i++) {
-        if (first_free == (u8)-1 && !state.editor[i].active) {
+        if (first_free == (u8)-1 && !state.editor[i].active || strcmp(state.editor[i].filename, "*scratch*") == 0) {
             first_free = i;
         }
         if (strcmp(state.editor[i].filename, filename) == 0) {
