@@ -31,7 +31,6 @@ typedef struct {
 typedef struct {
     bool active;
     bool dirty;
-    u8 editor_index;
     u8 file_index;
     char buf[BUFFER_SIZE];
     char filename[MAX_STRING_LENGTH];
@@ -76,7 +75,6 @@ static void init(void) {
     for (u8 i = 0; i < MAX_EDITORS; i++) {
         state.editor[i] = (editor_t){.active = false,
                                      .dirty = false,
-                                     .editor_index = i,
                                      .file_index = -1,
                                      .buf = {0},
                                      .filename = {0},
@@ -176,7 +174,7 @@ static void save_file(const char *path) {
     }
 }
 
-void open_file_handler(const char *filename) {
+static void open_file_handler(const char *filename) {
     u8 first_free, file_index;
     first_free = file_index = (u8)-1;
     for (u8 i = 0; i < MAX_FILES; i++) {
